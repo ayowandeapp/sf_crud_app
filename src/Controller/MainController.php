@@ -2,7 +2,7 @@
 
 namespace App\Controller;
 
-use App\DTO\Response\PostResponse;
+use App\Response\PostResponse;
 use App\Entity\Post;
 use App\Service\FailedValidationException;
 use App\Service\ServiceException;
@@ -11,19 +11,22 @@ use App\DTO\PostDTO;
 use App\Service\Post\PostService;
 use App\Service\ProcessExceptionData;
 use App\Service\Serializer\DTOSerializer;
+use App\Validation\Validator;
 use Exception;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
-use Symfony\Component\Serializer\SerializerInterface;
-use Symfony\Component\Validator\Exception\ValidationFailedException;
-use Symfony\Component\Validator\Validator\ValidatorInterface;
+// use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 class MainController extends AbstractController
 {
-    public function __construct(private PostService $postService, private ValidatorInterface $validator) {}
+    public function __construct(
+        private PostService $postService,
+        private Validator $validator,
+        private DTOSerializer $serializer
+    ) {}
 
     #[Route(path: "/posts", name: "app_posts", methods: [Request::METHOD_GET])]
     public function index(Request $request): Response
@@ -37,11 +40,11 @@ class MainController extends AbstractController
     public function show(int $id): Response
     {
         $post = $this->postService->findPostById($id);
-
+        // $jsonData = $serializer->serialize($posts, 'json', ['groups' => 'post:list']);
         return new JsonResponse((new PostResponse($post))->toArray(), Response::HTTP_OK);
     }
 
-    #[Route(path: "/delete/post/{id}", name: "app_post", methods: [Request::METHOD_DELETE])]
+    #[Route(path: "/delete/post/{id}", name: "app_delete_post", methods: [Request::METHOD_DELETE])]
     public function destroy(int $id): Response
     {
         $post = $this->postService->deletePost($id);
@@ -53,7 +56,10 @@ class MainController extends AbstractController
     public function savePost(Request $request): JsonResponse
     {
         // Deserialize JSON request content into PostDTO
-        $postDTO = $this->postValidation($request->getContent(), 'create');
+
+        $dataDTO = $this->serializer->deserialize($request->getContent(), PostDTO::class, 'json');
+
+        $postDTO = $this->validator->validate($dataDTO, type: 'create');
 
         $post = $this->postService->savePost($postDTO);
 
@@ -64,34 +70,13 @@ class MainController extends AbstractController
     public function editPost(Request $request, int $id)
     {
         // Deserialize JSON request content into PostDTO
-        $postDTO = $this->postValidation($request->getContent());
+
+        $dataDTO = $this->serializer->deserialize($request->getContent(), PostDTO::class, 'json');
+
+        $postDTO = $this->validator->validate($dataDTO);
 
         $post = $this->postService->editPost($id, $postDTO);
 
         return new JsonResponse((new PostResponse($post))->toArray(), 201);
-    }
-
-    ///put this in a class 
-    private function postValidation($data, string $type = null): PostDTO
-    {
-        /**
-         * @var DTOSerializer 
-         */
-        $serializer = new DTOSerializer;
-
-        // Deserialize JSON request content into PostDTO
-        $postDTO = $serializer->deserialize($data, PostDTO::class, 'json');
-
-        //validation        
-        $errors = $this->validator->validate($postDTO, groups: $type ? [$type] : '');
-
-        //if validation failed 
-        if (count($errors) > 0) {
-            //process validation data
-            $exceptionData = new ProcessExceptionData($errors, Response::HTTP_BAD_REQUEST);
-            throw new FailedValidationException($exceptionData);
-        }
-
-        return $postDTO;
     }
 }

@@ -1,11 +1,10 @@
 <?php
 
-namespace App\DTO\Response;
+namespace App\Response;
 
 use App\Entity\Post;
-use Symfony\Component\HttpFoundation\JsonResponse;
 
-class PostResponse extends JsonResponse
+class PostResponse implements ResponseInterface
 {
     public function __construct(private Post $post) {}
 

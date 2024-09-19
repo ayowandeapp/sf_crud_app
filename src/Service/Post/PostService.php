@@ -5,6 +5,7 @@ namespace App\Service\Post;
 use App\DTO\PostDTO;
 use App\Entity\Post;
 use App\Service\FailedValidationException;
+use App\Service\Pagination\Paginate;
 use App\Service\ProcessExceptionData;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\Pagination\Paginator;
@@ -13,7 +14,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class PostService
 {
-    public function __construct(private EntityManagerInterface $em) {}
+    public function __construct(private EntityManagerInterface $em, private Paginate $paginate) {}
     public function savePost(PostDTO $postDTO): Post
     {
         //map the DTO to the Post entity
@@ -61,53 +62,14 @@ class PostService
     {
         $page = $request->query->get("page", 1);
         $limit = $request->query->get("limit", 2);
-        $offset = ($page - 1) * $limit;
 
         $posts = $this->em->getRepository(Post::class)
             ->createQueryBuilder("post")
-            ->setFirstResult($offset)
-            ->setMaxResults($limit)
             ->getQuery()
             // ->getResult()
         ;
+        // dd($posts);
 
-        //get paginate 
-        $paginator = new Paginator($posts, true);
-        $totalItems = $paginator->count();
-        $totalPages = ceil($totalItems / $limit);
-
-        // Convert the paginated results into an array
-        $posts = [];
-        foreach ($paginator as $post) {
-            $posts[] = [
-                'id' => $post->getId(),
-                'title' => $post->getTitle(),
-                'content' => $post->getContent(),
-            ];
-        }
-
-        // Build the next and previous page URLs manually using $request
-        $currentUri = $request->getPathInfo(); // This will give you "/posts"
-        $queryParams = [];
-        $queryParams['limit'] = $limit;
-
-        // Construct the next page URL if there are more pages
-        $queryParams['page'] = $page < $totalPages ? $page + 1 : $page;
-        $nextPage = $page < $totalPages ? $currentUri . '?' . http_build_query($queryParams) : null;
-
-        // Construct the previous page URL if applicable
-        $queryParams['page'] = $page > 1 ? $page - 1 : $page;
-        $prevPage = $page > 1 ? $currentUri . '?' . http_build_query($queryParams) : null;
-
-        return [
-            'data' => $posts,
-            'meta' => [
-                'current_page' => $page,
-                'total_pages' => $totalPages,
-                'total_items' => $totalItems,
-                'next' => $nextPage,
-                'previous' => $prevPage,
-            ]
-        ];
+        return $this->paginate->paginate($posts, $page, $limit);
     }
 }
