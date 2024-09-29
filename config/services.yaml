@@ -25,3 +25,6 @@ services:
     App\EventListener\ExceptionListener:
         tags:
             - {name: kernel.event_listener,event: kernel.exception}
+    App\Service\TokenManager:
+        arguments:
+            $filePath: '%kernel.project_dir%/var/tokens.json'

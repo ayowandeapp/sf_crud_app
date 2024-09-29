@@ -39,9 +39,9 @@ class MainController extends AbstractController
     #[Route(path: "/post/{id}", name: "app_post", methods: [Request::METHOD_GET])]
     public function show(int $id): Response
     {
-        $post = $this->postService->findPostById($id);
+        $post = $this->postService->findPostWithComments($id);
         // $jsonData = $serializer->serialize($posts, 'json', ['groups' => 'post:list']);
-        return new JsonResponse((new PostResponse($post))->toArray(), Response::HTTP_OK);
+        return new JsonResponse($post, Response::HTTP_OK);
     }
 
     #[Route(path: "/delete/post/{id}", name: "app_delete_post", methods: [Request::METHOD_DELETE])]
@@ -52,7 +52,7 @@ class MainController extends AbstractController
         return new JsonResponse($post, Response::HTTP_OK);
     }
 
-    #[Route('/save/post', name: 'app_save_post', methods: [Request::METHOD_POST])]
+    #[Route('/api/save/post', name: 'app_save_post', methods: [Request::METHOD_POST])]
     public function savePost(Request $request): JsonResponse
     {
         // Deserialize JSON request content into PostDTO

@@ -4,17 +4,14 @@ namespace App\Validation;
 
 use App\Service\FailedValidationException;
 use App\Service\ProcessExceptionData;
-use App\Service\Serializer\DTOSerializer;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 class Validator
 {
     public function __construct(private ValidatorInterface $validator) {}
-    public function validate($dataDTO, string $type = null)
+    public function validate($dataDTO, string $type = null): mixed
     {
-
-
         //validation        
         $errors = $this->validator->validate($dataDTO, groups: $type ? [$type] : '');
 

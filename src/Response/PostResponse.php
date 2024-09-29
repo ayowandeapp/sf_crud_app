@@ -14,6 +14,7 @@ class PostResponse implements ResponseInterface
             "id" => $this->post->getId(),
             "title" => $this->post->getTitle(),
             "content" => $this->post->getContent(),
+            "author" => (new UserResponse($this->post->getAuthor()))->toArray(),
         ];
     }
 }
