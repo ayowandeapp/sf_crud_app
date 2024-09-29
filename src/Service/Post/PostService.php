@@ -4,10 +4,14 @@ namespace App\Service\Post;
 
 use App\DTO\PostDTO;
 use App\Entity\Post;
+use App\Entity\User;
 use App\Service\FailedValidationException;
 use App\Service\Pagination\Paginate;
 use App\Service\ProcessExceptionData;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Query;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\ORM\Tools\Pagination\Paginator;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\Request;
@@ -47,6 +51,41 @@ class PostService
         return $post;
     }
 
+    
+    ////// create reusable post query ///////
+    private function findAllQuery(
+        bool $withComments = false,
+        bool $withLikes = false,
+        bool $withAuthors = false,
+        bool $withProfiles = false
+    ): QueryBuilder
+    {
+        $query = $this->em->getRepository(Post::class)
+                    ->createQueryBuilder('post')
+                    ;
+        if($withComments){
+            $query->leftJoin('post.comments', 'comments')// Eager load comments
+            ->addSelect('comments');// Add the comments to the select clause
+        }
+
+        if($withLikes){
+            $query->leftJoin('post.likedBy', 'l')
+            ->addSelect('l');
+        }
+        
+        if($withAuthors || $withProfiles){
+            $query->leftJoin('post.author', 'author')
+            ->addSelect('author');
+        }
+        
+        if($withProfiles){
+            $query->leftJoin('author.userProfile', 'up')
+            ->addSelect('up');
+        }
+
+        return $query->orderBy('p.createdDate', 'DESC');
+
+    }
     public function findPostWithComments(int $id): ?array
     {
         $post = $this->em->getRepository(Post::class)
@@ -88,15 +127,74 @@ class PostService
         $page = $request->query->get("page", 1);
         $limit = $request->query->get("limit", 2);
 
-        $posts = $this->em->getRepository(Post::class)
-            ->createQueryBuilder("post")
-            ->leftJoin("post.comments", "comment") // Eager load comments
-            ->addSelect("comment") // Add the comments to the select clause
-            ->addSelect("COUNT(comment) as comment_count")
+        $posts = $this->findAllQuery(withComments: true)
+            ->addSelect("COUNT(comments) as comment_count")
             ->groupBy("post.id")
-            ->orderBy("post.createdDate", "DESC")
             ->getQuery()
             // ->getResult()
+        ;
+
+        return $this->paginate->paginate($posts, $page, $limit);
+    }
+    
+    public function findAllByAuthor($request, int | User $author): array
+    {
+        $page = $request->query->get("page", 1);
+        $limit = $request->query->get("limit", 2);
+
+        $posts = $this->findAllQuery(withComments: true, withAuthors: true)
+                    ->where('author = :author')
+                    ->setParameter(
+                        'author', 
+                        $author instanceof User ? $author->getId() : $author
+                        )
+                    ->addSelect("COUNT(comments) as comment_count")
+                    ->groupBy("post.id")
+                    ->getQuery()
+        ;
+
+        return $this->paginate->paginate($posts, $page, $limit);
+    }
+
+    
+    public function findPostWithMinLikes($request, int $likeCount): array
+    {
+        $page = $request->query->get("page", 1);
+        $limit = $request->query->get("limit", 2);
+
+        $postIds = $this->findAllQuery(withLikes: true)
+                    ->select('post.id')
+                    ->having('COUNT(l) >= :likeCount')
+                    ->setParameter('likeCount', $likeCount)
+                    ->groupBy("post.id")
+                    ->getQuery()
+                    ->getResult(Query::HYDRATE_SCALAR_COLUMN)
+        ;
+        $posts = $this->findAllQuery(withLikes: true, withComments:true)
+                        ->where('post.id IN (:postIds)')
+                        ->setParameter('postIds', $postIds)
+                        ->getQuery()
+        ;
+
+        return $this->paginate->paginate($posts, $page, $limit);
+    }
+
+    
+    public function findPostFromFollowed($request): array
+    {
+        $page = $request->query->get("page", 1);
+        $limit = $request->query->get("limit", 2);
+
+        /**
+         * @var User
+         */
+        $currentUser = $this->security->getUser();
+        $authors = $currentUser->getFollows();
+        
+        $posts = $this->findAllQuery(withAuthors: true, withLikes: true, withComments:true)
+                        ->where('post.author IN (:authors)')
+                        ->setParameter('authors', $authors)
+                        ->getQuery()
         ;
 
         return $this->paginate->paginate($posts, $page, $limit);
